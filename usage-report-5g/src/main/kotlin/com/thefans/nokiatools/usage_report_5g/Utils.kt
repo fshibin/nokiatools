@@ -56,10 +56,26 @@ fun toHexString(ba: ByteArray): String {
 	return ret;
 }
 
+fun toHexString(ba: ByteArray, start: Int, end: Int): String {
+	var ret = "0x";
+    for (i in start until end) ret = ret.plus(String.format("%02X", ba[i]));
+	return ret;
+}
+
 fun toLong(ba: ByteArray): Long {
 	var l: Long = 0;
 	l = l.or(ba[0].toLong().and(0xFF));
 	for (i in 1 until ba.size) {
+		l = l.shl(8);
+		l = l.or(ba[i].toLong().and(0xFF));
+	}
+	return l;
+}
+
+fun toLong(ba: ByteArray, start: Int, end: Int): Long {
+	var l: Long = 0;
+	l = l.or(ba[start].toLong().and(0xFF));
+	for (i in start + 1 until end) {
 		l = l.shl(8);
 		l = l.or(ba[i].toLong().and(0xFF));
 	}

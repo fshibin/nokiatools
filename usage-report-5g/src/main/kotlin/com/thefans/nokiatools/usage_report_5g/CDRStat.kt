@@ -1,157 +1,174 @@
-package com.thefans.nokiatools.usage_report_5g
+package com.thefans.nokiatools.usage_report_5g;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.ArrayList;
 
-public class CDRStat {
-	static boolean needWarning = false;
-	static Set<String> subs = new HashSet<String>();
-	static FileOutputStream fos = null;
-	static long totUplink, totDownlink;
+private var needWarning = false;
 
-	public static void main(String[] args) {
-		if (args.length < 1) {
-			printUsage();
-			System.exit(0);
-		}
+fun main(args: Array<String>) {
+	if (args.size < 1) {
+		printUsage();
+		System.exit(-1);
+	}
+	val headers = "MSISDN,chargingID,ECI,startTime,endTime,uplinkVolume,downlinkVolume";
+	println(headers);
 
-		try {
-			fos = new FileOutputStream("bjasn1stat.csv");
-			String out = "msisdn" + "\n";
-			try {
-				fos.write(out.getBytes());
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-		} catch (FileNotFoundException e1) {
-			e1.printStackTrace();
-		}
-		System.out.println("统计PGW话单中都有哪些用户（去重后）并把用户列表写入文件");
-
-		for (int i = 0; i < args.length; i++) {
-			File f = new File(args[i]);
-			if (f.isFile()) {
-				System.out.print("Decoding " + args[i] + "...");
-				statCdr(f);
-				System.out.println("done");
-			}
-		}
-		System.out.print("Writing subscriber list into bjasn1stat.csv...");
-		for (String out : subs) {
-			out += "\n";
-			try {
-				fos.write(out.getBytes());
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-		}
-		System.out.println("done");
-		System.out.println("Subscriber#: " + subs.size() + ", totUplink: " + totUplink + ", totDownlink: " + totDownlink);
-
-		if (needWarning) {
-			System.out.println("Unknown CDR types found. This tool can only support PGW-CDRs.");
-		}
+	for (i in 0 until args.size) {
+		val f = File(args[i]);
+		if (f.isFile()) processOneFile(f);
 	}
 
-	public static void statCdr(File f) {
-		FileInputStream fis = null;
-		try {
-			fis = new FileInputStream(f);
-		} catch (FileNotFoundException e) {
-			System.out.println("Unable to open " + f.getAbsolutePath());
-			return;
+	if (needWarning) println("Unknown CDR types found. This tool only works with PGW-CDRs.");
+}
+
+fun printUsage() {
+	println("Usage: java -jar <path>" + System.getProperties().getProperty("file.separator") + "usgrep5g.jar files...");
+	println("By Shibin FAN, copyright 2019-2025 Nokia Networks.");
+}
+
+fun processOneFile(f: File) {
+	var fis: FileInputStream;
+	try {
+		fis = FileInputStream(f);
+	} catch (e: FileNotFoundException) {
+		System.err.println("Unable to open " + f.getAbsolutePath());
+		return;
+	}
+	try {
+		while (fis.available() > 0) {
+			getASN1Tag(fis);
+			val len = getASN1Len(fis);
+			val buf = readBytes(fis, len);
+			processOneCdr(buf);
 		}
+	} catch (e: Exception) {
+		e.printStackTrace();
+	} finally {
 		try {
-			while (fis.available() > 0) {
-				Common.getASN1Tag(fis);
-				int len = Common.getASN1Len(fis);
-				byte[] buf = Common.readBytes(fis, len);
-				statCdr(buf);
-			}
-		} catch (Exception e) {
+			fis.close();
+		} catch (e: Exception) {
 			e.printStackTrace();
-		} finally {
-			try {
-				fis.close();
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
 		}
-	}
-
-	public static void statCdr(byte[] buf) {
-		long recType = 0;
-		ByteArrayInputStream bais = new ByteArrayInputStream(buf);
-		while (bais.available() > 0) {
-			try {
-				int tag = Common.getASN1Tag(bais);
-				int len = Common.getASN1Len(bais);
-				byte[] val = Common.readBytes(bais, len);
-				if (tag == 0) {
-					recType = Common.toLong(val);
-				} else {
-					if (recType == 85) { // PGW-CDR
-						if (tag == 22) { // servedMSISDN
-							String msisdn = swapMSISDN(Common.toHexString(val).substring(2));
-							subs.add(msisdn);
-						} else if (tag == 34) { // listOfServiceData
-							ByteArrayInputStream bais5 = new ByteArrayInputStream(val);
-
-							long uplink = 0, downlink = 0;
-
-							while (bais5.available() > 0) {
-								tag = Common.getASN1Tag(bais5); // 16
-								len = Common.getASN1Len(bais5);
-								val = Common.readBytes(bais5, len);
-
-								ByteArrayInputStream bais6 = new ByteArrayInputStream(val);
-								while (bais6.available() > 0) {
-									tag = Common.getASN1Tag(bais6);
-									len = Common.getASN1Len(bais6);
-									val = Common.readBytes(bais6, len);
-
-									if (tag == 12) { // uplinkVolume
-										uplink += Common.toLong(val);
-									}
-									if (tag == 13) { // downlinkVolume
-										downlink += Common.toLong(val);
-									}
-								}
-							}
-							totUplink += uplink;
-							totDownlink += downlink;
-						}
-					} else {
-						needWarning = true;
-					}
-				}
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-		}
-	}
-
-	static String swapMSISDN(String in) {
-		String out = "";
-		int i = 0;
-		while (i < in.length()) {
-			if (i + 1 < in.length()) out += in.substring(i + 1, i + 2);
-			String tmp = in.substring(i, i + 1);
-			if (!"F".equalsIgnoreCase(tmp)) out += tmp;
-			i = i + 2;
-		}
-		return out;
-	}
-
-	public static void printUsage() {
-		System.out.println("Usage: java -jar <path>" + System.getProperties().getProperty("file.separator") + "bjasn1stat.jar files...");
-		System.out.println("By Shipley FAN, copyright 2014-2019 Nokia Networks.");
 	}
 }
 
+fun processOneCdr(buf: ByteArray) {
+	var recType: Int = 0; // tag 0
+	var chargingId: Long = 0; // tag 5
+	var msisdn: String = ""; // tag 22
+	var uli = byteArrayOf(); // tag 32
+
+	data class UsageReport5G (var startTime: String, var endTime: String, var uplinkVolume: Long, var downlinkVolume: Long);
+	var ur5List = ArrayList<UsageReport5G>(); // tag 73
+
+	val bais = ByteArrayInputStream(buf);
+	while (bais.available() > 0) {
+		try {
+			var tag = getASN1Tag(bais);
+			var len = getASN1Len(bais);
+			var zhi = readBytes(bais, len);
+			if (tag == 0) { // always the first field
+				recType = toLong(zhi).toInt();
+			} else {
+				if (recType == 85) { // PGW-CDR
+					if (tag == 5) {
+						chargingId = toLong(zhi);
+					} else if (tag == 22) { // servedMSISDN
+						msisdn = swapMSISDN(toHexString(zhi).substring(2));
+					} else if (tag == 32) { // userLocationInformation
+						uli = zhi;
+					} else if (tag == 73) { // listOfRANSecondaryRATUsageReports
+						val bais2 = ByteArrayInputStream(zhi);
+
+						while (bais2.available() > 0) {
+							tag = getASN1Tag(bais2); // 16
+							len = getASN1Len(bais2);
+							zhi = readBytes(bais2, len);
+
+							var startTime = ""; var endTime = "";
+							var uplinkVolume = 0L; var downlinkVolume = 0L;
+
+							val bais3 = ByteArrayInputStream(zhi);
+							while (bais3.available() > 0) {
+								tag = getASN1Tag(bais3);
+								len = getASN1Len(bais3);
+								zhi = readBytes(bais3, len);
+
+								if (tag == 1) { // dataVolumeUplink
+									uplinkVolume = toLong(zhi);
+								} else if (tag == 2) { // dataVolumeDownlink
+									downlinkVolume = toLong(zhi);
+								} else if (tag == 3) { // rANStartTime
+									startTime = formatTimeStamps(zhi);
+								} else if (tag == 4) { // rANEndTime
+									endTime = formatTimeStamps(zhi);
+								}
+							}
+							val ur5 = UsageReport5G(startTime, endTime, uplinkVolume, downlinkVolume);
+							ur5List.add(ur5);
+						}
+					}
+				} else {
+					needWarning = true;
+				}
+			}
+		} catch (e: Exception) {
+			e.printStackTrace();
+		}
+	}
+	// TODO: extract ECI from uli
+	for (ur5 in ur5List) {
+		val S = ",";
+		var out = "".plus(chargingId).plus(S).plus(msisdn).plus(S).plus(extractECIFromUserLocationInfo(uli)).plus(S);
+		out = out.plus(ur5.startTime).plus(S).plus(ur5.endTime).plus(S).plus(ur5.uplinkVolume).plus(S).plus(ur5.downlinkVolume);
+		System.out.println(out);
+	}
+}
+
+fun swapMSISDN(ins: String): String {
+	var out = "";
+	var i = 0;
+	while (i < ins.length) {
+		if (i + 1 < ins.length) out += ins.substring(i + 1, i + 2);
+		val tmp = ins.substring(i, i + 1);
+		if (!"F".equals(tmp, true)) out += tmp;
+		i = i + 2;
+	}
+	return out;
+}
+
+// TODO: further format time stamp according to requirement
+fun formatTimeStamps(zhi: ByteArray): String {
+	var ts = toHexString(zhi).substring(2);
+	ts = ts.substring(0, ts.length - 6); // remove time zone like 2b0000
+	return ts;
+}
+
+// TODO: further format ECI according to requirement
+fun extractECIFromUserLocationInfo(uli: ByteArray): String {
+	if (uli.size == 0) return "";
+	var eci = "";
+	// 1st byte: Geographic location type 
+	var bit1 = (uli[0].toInt().and(0x01)) > 0; // CGI, 7 bytes
+	var bit2 = (uli[0].toInt().and(0x02)) > 0; // SAI, 7 bytes
+	var bit3 = (uli[0].toInt().and(0x04)) > 0; // RAI, 7 bytes
+	var bit4 = (uli[0].toInt().and(0x08)) > 0; // TAI, 5 bytes
+	var bit5 = (uli[0].toInt().and(0x10)) > 0; // ECGI, 7 bytes
+
+	if (bit5) {
+		var pos = 1; // from 2nd byte
+		pos += (if (bit1) 7 else 0);
+		pos += (if (bit2) 7 else 0);
+		pos += (if (bit3) 7 else 0);
+		pos += (if (bit4) 5 else 0);
+		// ECGI = 7 bytes (3 bytes for location area and 4 bytes for ECI [actually 3 and a half...]). 
+		pos += 3;
+		eci = "" + toLong(uli, pos, pos + 4);
+		// eci = toHexString(uli, pos, pos + 4).substring(2);
+	}
+
+	return eci;
+}
