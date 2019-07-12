@@ -8,13 +8,16 @@ fun catBytes(b1: ByteArray, b2: ByteArray) : ByteArray = b1.plus(b2);
 
 fun getASN1Tag(ins: InputStream) : Int {
 	var r : Int = 0;
-	var b = ins.readBytes(1);
+	// var b = ins.readBytes(1); // This reads all content instead of just 1 byte
+	var b = ByteArray(1);
+	ins.read(b);
 	buf = b;
 	if (b[0].toInt().and(0x1F) != 0x1F) return b[0].toInt().and(0x1F);
 	else {
 		b[0] = 0x80.toByte();
 		while(b[0].toInt() != 0) {
-			b = ins.readBytes(1);
+			// b = ins.readBytes(1);
+			ins.read(b);
 			buf = buf.plus(b);
 			r = r.shl(7) + b[0].toInt().and(0x7F);
 			b[0] = b[0].toInt().and(0x80).toByte();
@@ -25,13 +28,16 @@ fun getASN1Tag(ins: InputStream) : Int {
 
 fun getASN1Len(ins: InputStream) : Int {
 	var r : Int = 0;
-	var b = ins.readBytes(1);
+	// var b = ins.readBytes(1); // This reads all content instead of just 1 byte
+	var b = ByteArray(1);
+	ins.read(b);
 	buf = b;
 	if (b[0].toInt().and(0x80) == 0) return b[0].toInt();
 	else {
 		val l: Int = b[0].toInt().and(0x7F);
 		for (i in 0 until l) {
-			b = ins.readBytes(1);
+			// b = ins.readBytes(1);
+			ins.read(b);
 			buf = buf.plus(b);
 			r = r.shl(8) + b[0].toInt().and(0xFF);
 		}
