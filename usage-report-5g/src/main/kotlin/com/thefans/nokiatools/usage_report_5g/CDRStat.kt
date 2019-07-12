@@ -87,6 +87,11 @@ fun processOneCdr(buf: ByteArray) {
 							tag = getASN1Tag(bais2); // 16
 							len = getASN1Len(bais2);
 							zhi = readBytes(bais2, len);
+							
+							if (tag != 16) {
+								System.err.println("Wrong tag instead of 16 - sequence of, is found.");
+								System.exit(-1);
+							}
 
 							var startTime = ""; var endTime = "";
 							var uplinkVolume = 0L; var downlinkVolume = 0L;
