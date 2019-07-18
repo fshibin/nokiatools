@@ -117,13 +117,13 @@ fun filterCdrs(f: File) {
 					if (fos == null) {
 						fos = FileOutputStream(f.getAbsolutePath().plus(".ber"));
 					}
-					fos?.write(cdr);
+					fos.write(cdr);
 					outputted++;
 				} else {
 					if (fos2 == null) {
 						fos2 = FileOutputStream(f.getAbsolutePath().plus(".ber.filtered"));
 					}
-					fos2?.write(cdr);
+					fos2.write(cdr);
 					filtered++;
 				}
 			}
